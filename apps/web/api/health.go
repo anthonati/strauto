@@ -1,10 +1,11 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
+
+	"strauto/server"
 )
 
 func Health(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "<h1>We're up and running!</h1>")
+	strauto.Health(w, r)
 }

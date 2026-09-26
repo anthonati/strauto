@@ -19,11 +19,48 @@ func testConfig(t *testing.T) {
 	t.Setenv("STRAVA_CLIENT_ID", "123")
 	t.Setenv("STRAVA_CLIENT_SECRET", "test-secret")
 	t.Setenv("SUPABASE_URL", "https://example.supabase.co")
+	t.Setenv("SUPABASE_SECRET_KEY", "")
 	t.Setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
 	t.Setenv("SESSION_SECRET", strings.Repeat("x", 32))
 	t.Setenv("STRAVA_WEBHOOK_VERIFY_TOKEN", "verify-token")
 	t.Setenv("STRAVA_WEBHOOK_SECRET", "callback-secret")
 	t.Setenv("STRAVA_WEBHOOK_SUBSCRIPTION_ID", "9")
+}
+
+func TestHealthReflectsConfiguration(t *testing.T) {
+	testConfig(t)
+	ready := httptest.NewRecorder()
+	Health(ready, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"configured"`) {
+		t.Fatalf("configured health: %d %s", ready.Code, ready.Body.String())
+	}
+	t.Setenv("SESSION_SECRET", "short")
+	unready := httptest.NewRecorder()
+	Health(unready, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if unready.Code != http.StatusServiceUnavailable || strings.Contains(unready.Body.String(), "SESSION_SECRET") {
+		t.Fatalf("unconfigured health: %d %s", unready.Code, unready.Body.String())
+	}
+}
+
+func TestSupabaseSecretKeyUsesApiKeyHeader(t *testing.T) {
+	testConfig(t)
+	t.Setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+	c, err := readConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := httpClient
+	t.Cleanup(func() { httpClient = previous })
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("apikey") != "sb_secret_test" || req.Header.Get("Authorization") != "" {
+			t.Errorf("incorrect Supabase auth headers: %v", req.Header)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("[]"))}, nil
+	})}
+	var rows []athlete
+	if _, err := dbRequest(httptest.NewRequest(http.MethodGet, "/", nil).Context(), c, http.MethodGet, "athletes", nil, nil, &rows); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestOAuthStartAndStateRejection(t *testing.T) {

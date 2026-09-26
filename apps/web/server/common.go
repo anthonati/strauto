@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -34,18 +35,40 @@ type config struct {
 }
 
 func readConfig() (config, error) {
+	supabaseKey := os.Getenv("SUPABASE_SECRET_KEY")
+	if supabaseKey == "" {
+		// Existing projects may still use the legacy service-role JWT.
+		supabaseKey = os.Getenv("SUPABASE_SERVICE_ROLE_KEY")
+	}
 	c := config{
 		appURL:        strings.TrimRight(os.Getenv("APP_URL"), "/"),
 		clientID:      os.Getenv("STRAVA_CLIENT_ID"),
 		clientSecret:  os.Getenv("STRAVA_CLIENT_SECRET"),
 		supabaseURL:   strings.TrimRight(os.Getenv("SUPABASE_URL"), "/"),
-		supabaseKey:   os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
+		supabaseKey:   supabaseKey,
 		sessionSecret: os.Getenv("SESSION_SECRET"),
 		webhookToken:  os.Getenv("STRAVA_WEBHOOK_VERIFY_TOKEN"),
 		webhookSecret: os.Getenv("STRAVA_WEBHOOK_SECRET"),
 		workerSecret:  os.Getenv("WORKER_SECRET"),
 	}
-	if c.appURL == "" || c.clientID == "" || c.clientSecret == "" || c.supabaseURL == "" || c.supabaseKey == "" || len(c.sessionSecret) < 32 {
+	var missing []string
+	for name, value := range map[string]string{
+		"APP_URL":              c.appURL,
+		"STRAVA_CLIENT_ID":     c.clientID,
+		"STRAVA_CLIENT_SECRET": c.clientSecret,
+		"SUPABASE_URL":         c.supabaseURL,
+		"SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY": c.supabaseKey,
+	} {
+		if value == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(c.sessionSecret) < 32 {
+		missing = append(missing, "SESSION_SECRET (at least 32 characters)")
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		log.Printf("Strauto server configuration is incomplete: %s", strings.Join(missing, ", "))
 		return c, errors.New("server configuration is incomplete")
 	}
 	u, err := url.Parse(c.appURL)
@@ -71,10 +94,23 @@ func readConfig() (config, error) {
 func configured(w http.ResponseWriter) (config, bool) {
 	c, err := readConfig()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		log.Printf("Strauto configuration error: %v", err)
+		http.Error(w, "server configuration is incomplete", http.StatusServiceUnavailable)
 		return c, false
 	}
 	return c, true
+}
+
+// Health reports whether this deployment has the minimum server configuration.
+// It does not make network calls to Strava or Supabase.
+func Health(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	if _, ok := configured(w); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "configured"})
 }
 
 func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
