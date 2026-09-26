@@ -24,13 +24,15 @@ See [architecture and domain layout](docs/architecture.md) for the existing `str
 
 ## Setup
 
-1. Create a Supabase project and run [`supabase/001_initial.sql`](supabase/001_initial.sql) in its SQL editor. Keep the service role key on the server only.
+1. Create a Supabase project and run [`supabase/001_initial.sql`](supabase/001_initial.sql) in its SQL editor. Use a server-only Supabase secret key; the legacy service-role key also works.
 2. Register a Strava API app. Set its authorization callback domain to the domain in `APP_URL` (use `localhost` for local development). Copy the variables in [`apps/web/.env.example`](apps/web/.env.example) into `apps/web/.env.local` for local development, and set them as server environment variables in Vercel for deployment. Generate fresh random values for `SESSION_SECRET`, `STRAVA_WEBHOOK_VERIFY_TOKEN`, `STRAVA_WEBHOOK_SECRET`, and `WORKER_SECRET`.
 3. Locally, from `apps/web`, run `set -a; source .env.local; set +a; go run ./api/_local` in one terminal and `pnpm dev` in another. Vite proxies `/api` to the Go server on port 8080. `APP_URL` should be `http://localhost:5173`.
 4. The existing Vercel project serves `strauto.fortunati.dev` from `apps/web`. Set its server-side `APP_URL` to `https://strauto.fortunati.dev` before deploying this branch. Set the Strava app's authorization callback domain to `strauto.fortunati.dev`. Register **one** Strava webhook subscription with callback URL `https://strauto.fortunati.dev/api/webhook?key=YOUR_STRAVA_WEBHOOK_SECRET` and the verify token from your environment. Save the returned subscription ID as `STRAVA_WEBHOOK_SUBSCRIPTION_ID` in Vercel. Strava sends all connected athletes' events to that one subscription.
 5. In Supabase Cron, create an HTTP job that calls `POST https://strauto.fortunati.dev/api/process_events` every minute with `Authorization: Bearer YOUR_WORKER_SECRET`. Keep that secret in Supabase Vault or the Cron dashboard's secret management; do not put it in client code or a checked-in SQL file. You can make the same call manually for an end-to-end local test.
 
 The API expects `activity:read` and `activity:write` scopes. It intentionally requests no access to private activities. The webhook callback has a secret URL parameter because Strava's webhook events are not signed. Keep the full callback URL private. Disconnect revokes the Strava refresh token and deletes the athlete's data and queued events.
+
+For the exact production order and troubleshooting of “server configuration is incomplete,” see [server setup](docs/server-setup.md). `/api/health` returns `200` once the minimum environment variables are valid and `503` otherwise; it does not check whether the external accounts or webhook are connected.
 
 ## Verification
 

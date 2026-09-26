@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -47,7 +48,10 @@ func dbRequest(ctx context.Context, c config, method, path string, body any, hea
 		return 0, err
 	}
 	req.Header.Set("apikey", c.supabaseKey)
-	req.Header.Set("Authorization", "Bearer "+c.supabaseKey)
+	if !strings.HasPrefix(c.supabaseKey, "sb_secret_") {
+		// Legacy service-role keys are JWTs; current secret keys are not.
+		req.Header.Set("Authorization", "Bearer "+c.supabaseKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {
 		req.Header.Set(k, v)
