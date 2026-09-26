@@ -34,6 +34,10 @@ type config struct {
 	workerSecret   string
 }
 
+func (c config) automationConfigured() bool {
+	return c.subscriptionID > 0 && c.webhookSecret != "" && c.webhookToken != "" && c.workerSecret != ""
+}
+
 func readConfig() (config, error) {
 	supabaseKey := os.Getenv("SUPABASE_SECRET_KEY")
 	if supabaseKey == "" {
@@ -107,10 +111,13 @@ func Health(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	if _, ok := configured(w); !ok {
+	c, ok := configured(w)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "configured"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "configured", "automation_configured": c.automationConfigured(),
+	})
 }
 
 func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {

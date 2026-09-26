@@ -25,14 +25,21 @@ func testConfig(t *testing.T) {
 	t.Setenv("STRAVA_WEBHOOK_VERIFY_TOKEN", "verify-token")
 	t.Setenv("STRAVA_WEBHOOK_SECRET", "callback-secret")
 	t.Setenv("STRAVA_WEBHOOK_SUBSCRIPTION_ID", "9")
+	t.Setenv("WORKER_SECRET", "worker-secret")
 }
 
 func TestHealthReflectsConfiguration(t *testing.T) {
 	testConfig(t)
 	ready := httptest.NewRecorder()
 	Health(ready, httptest.NewRequest(http.MethodGet, "/api/health", nil))
-	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"configured"`) {
+	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"automation_configured":true`) {
 		t.Fatalf("configured health: %d %s", ready.Code, ready.Body.String())
+	}
+	t.Setenv("STRAVA_WEBHOOK_SUBSCRIPTION_ID", "")
+	partial := httptest.NewRecorder()
+	Health(partial, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if partial.Code != http.StatusOK || !strings.Contains(partial.Body.String(), `"automation_configured":false`) {
+		t.Fatalf("partially configured health: %d %s", partial.Code, partial.Body.String())
 	}
 	t.Setenv("SESSION_SECRET", "short")
 	unready := httptest.NewRecorder()
