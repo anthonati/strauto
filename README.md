@@ -20,7 +20,7 @@ The first rule is opt-in and applies to future uploads after webhook registratio
 
 The hosting path can fit free tiers at small scale, subject to their limits. You already have the [Strava subscription required to create an API app](https://developers.strava.com/docs/getting-started/), so that prerequisite adds no new subscription cost. New apps start with one connected athlete; the [API dashboard can raise that to ten](https://developers.strava.com/docs/rate-limits/). [Vercel Hobby cron runs only daily](https://vercel.com/docs/cron-jobs/usage-and-pricing), so the near-real-time worker needs [Supabase Cron](https://supabase.com/docs/guides/cron) or another free scheduler. [Supabase may pause a free project for low activity](https://supabase.com/docs/guides/platform/free-project-pausing).
 
-See [architecture and domain layout](docs/architecture.md) for the existing `strauto.fortunati.dev` deployment and how it can coexist with a future portfolio site at `fortunati.dev`.
+See [architecture and domain layout](docs/architecture.md) for the existing `strauto.fortunati.dev` deployment and how it can coexist with a future portfolio site at `fortunati.dev`. The [backlog](BACKLOG.md) tracks the automation dashboard and run history.
 
 ## Setup
 
