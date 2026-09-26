@@ -11,7 +11,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   })
   if (response.status === 401) throw new Error('not connected')
-  if (!response.ok) throw new Error(response.status === 503 ? 'Strauto is not configured yet.' : 'The request failed. Please try again.')
+  if (!response.ok) {
+    const detail = response.status === 503 ? await response.text() : ''
+    if (detail.trim() === 'automation is not configured') {
+      throw new Error('Mute weight training is not ready yet. Its Strava webhook and activity worker still need setup.')
+    }
+    throw new Error(response.status === 503 ? 'Strauto is not configured yet.' : 'The request failed. Please try again.')
+  }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }

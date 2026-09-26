@@ -153,7 +153,7 @@ func Automation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid automation setting", http.StatusBadRequest)
 		return
 	}
-	if *body.MuteWeightTraining && (c.subscriptionID == 0 || c.webhookSecret == "" || c.webhookToken == "" || c.workerSecret == "") {
+	if *body.MuteWeightTraining && !c.automationConfigured() {
 		http.Error(w, "automation is not configured", http.StatusServiceUnavailable)
 		return
 	}
