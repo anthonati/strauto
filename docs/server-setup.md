@@ -6,7 +6,7 @@ The message `server configuration is incomplete` means the Go API cannot read it
 
 ## 1. Prepare the external projects
 
-Create a Supabase project and run [`supabase/001_initial.sql`](../supabase/001_initial.sql), followed by [`supabase/002_automation_history.sql`](../supabase/002_automation_history.sql), in its SQL editor. In Supabase **Project Settings → API Keys**, create a secret key (`sb_secret_...`) for the server. The legacy service-role JWT is supported through `SUPABASE_SERVICE_ROLE_KEY`, but new deployments should use `SUPABASE_SECRET_KEY`. Never put either key in a `VITE_` variable or commit it.
+Create a Supabase project and apply [`001_initial.sql`](../supabase/001_initial.sql), [`002_automation_history.sql`](../supabase/002_automation_history.sql), and [`003_queue_operations.sql`](../supabase/003_queue_operations.sql) in order. In Supabase **Project Settings → API Keys**, create a secret key (`sb_secret_...`) for the server. The legacy service-role JWT is supported through `SUPABASE_SERVICE_ROLE_KEY`, but new deployments should use `SUPABASE_SECRET_KEY`. Never put either key in a `VITE_` variable or commit it.
 
 Create a Strava API application in the Strava API dashboard. Set **Authorization Callback Domain** to `strauto.example.com` and obtain its client ID and client secret. The app's callback URL is `https://strauto.example.com/api/oauth_callback`.
 
@@ -55,3 +55,29 @@ Deploy this branch only after the migration succeeds. New code depends on the su
 After connecting, confirm the dashboard starts with zero counts, then enable the mute rule and upload a Weight Training activity. Refresh the dashboard after processing: checked and updated should each increase by one. A nonmatching upload should add only one checked activity. Replaying the same event should not increase either total. Verify disabling preserves history and disconnecting removes it, including when deauthorization comes from Strava.
 
 Counts begin with the new worker; historical queue results are not backfilled. Failed attempts are visible, but the dashboard is not proof the scheduler is running: verify the Cron job and one real upload separately.
+
+## 5. Monitor and retain queue records
+
+Apply `003_queue_operations.sql` before using these functions. It is compatible with older workers: a database trigger records `completed_at` when an event becomes `done`. Existing completed rows start their retention period at migration time because their exact completion time is unknown.
+
+From an administrative connection or server-side service role, inspect the queue:
+
+```sql
+select * from public.activity_queue_health();
+```
+
+The result contains counts of pending, processing, done, and failed events, plus the number of due events and the oldest due time. Due work includes expired processing leases and excludes retries scheduled for the future. Investigate any failed events or work overdue by more than ten minutes. Also check scheduler execution and HTTP responses; queue health alone does not prove the worker or Strava is reachable. Client and anonymous roles cannot call this function.
+
+Worker responses distinguish `processed`, `retrying`, and `failed`. `failed` means retries were exhausted; these rows remain available for investigation. Worker logs summarize these counts without activity IDs or upstream error bodies. External alert delivery must be configured separately in your monitoring system.
+
+Schedule bounded cleanup in Supabase Cron, for example hourly:
+
+```sql
+select cron.schedule(
+  'cleanup-completed-activity-events',
+  '0 * * * *',
+  'select public.cleanup_activity_events(1000);'
+);
+```
+
+Each call removes at most 1,000 `done` events completed more than 30 days ago and skips rows locked by other transactions. It never removes pending, processing, or failed events, and it does not delete automation history. Clearing a queue row also removes its webhook deduplication record; a very late duplicate may be evaluated again, but durable history still prevents inflated dashboard counts.

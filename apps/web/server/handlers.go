@@ -290,20 +290,26 @@ func ProcessEvents(w http.ResponseWriter, r *http.Request) {
 		safeError(w, err)
 		return
 	}
-	processed, failed := 0, 0
+	processed, retrying, failed := 0, 0, 0
 	for _, event := range events {
 		err := processEvent(r, c, event)
-		if err != nil {
-			failed++
-		} else {
-			processed++
-		}
 		if saveErr := finishEvent(r.Context(), c, event, err); saveErr != nil {
 			safeError(w, saveErr)
 			return
 		}
+		switch {
+		case err == nil:
+			processed++
+		case event.Attempts >= 5:
+			failed++
+		default:
+			retrying++
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"processed": processed, "retrying": failed})
+	if len(events) > 0 {
+		log.Printf("Activity worker completed: processed=%d retrying=%d failed=%d", processed, retrying, failed)
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"processed": processed, "retrying": retrying, "failed": failed})
 }
 
 func processEvent(r *http.Request, c config, event queuedEvent) (processErr error) {
