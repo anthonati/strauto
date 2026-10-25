@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -229,7 +230,11 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		// Authenticate that handshake with its verification token; the callback
 		// key below authenticates event deliveries.
 		q := r.URL.Query()
-		if q.Get("hub.mode") != "subscribe" || subtle.ConstantTimeCompare([]byte(q.Get("hub.verify_token")), []byte(c.webhookToken)) != 1 || q.Get("hub.challenge") == "" {
+		modeOK := q.Get("hub.mode") == "subscribe"
+		tokenOK := subtle.ConstantTimeCompare([]byte(q.Get("hub.verify_token")), []byte(c.webhookToken)) == 1
+		challengePresent := q.Get("hub.challenge") != ""
+		if !modeOK || !tokenOK || !challengePresent {
+			log.Printf("Strava webhook verification rejected: mode_ok=%t token_ok=%t challenge_present=%t", modeOK, tokenOK, challengePresent)
 			http.Error(w, "invalid verification", http.StatusForbidden)
 			return
 		}

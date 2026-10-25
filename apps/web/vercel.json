@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/process_events.go": { "maxDuration": 60 }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/hooks/strava/:key",
+      "destination": "/api/webhook?key=:key"
+    }
+  ]
 }
