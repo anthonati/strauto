@@ -26,3 +26,7 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# Local hosting and database CLI state
+.vercel/
+supabase/.temp/

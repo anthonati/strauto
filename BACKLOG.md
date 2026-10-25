@@ -2,9 +2,9 @@
 
 ## Next: deploy and prove the MVP end to end
 
-- Apply `supabase/002_automation_history.sql` before deploying the dashboard branch.
-- Complete webhook and worker configuration. On October 25, 2026, production `/api/health` returned `200` with `automation_configured: false`; this does not identify which settings are missing or verify external connectivity.
-- Register or inspect the Strava webhook, save its subscription ID, redeploy, and configure the once-per-minute worker job.
+- Database migration and dashboard deployment completed on October 25, 2026; see [rollout status](docs/rollout-status.md).
+- Finish Strava webhook registration, save its subscription ID, and redeploy. The webhook callback secrets and worker secret are configured; production still reports `automation_configured: false` until the subscription ID is set.
+- The once-per-minute Supabase worker job is configured with its token in Vault. Live worker and webhook challenge checks pass.
 - Connect one athlete, enable the mute rule, upload Weight Training, and verify both the Strava result and dashboard counts. Also check a nonmatching upload, duplicate delivery, disable/re-enable, disconnect, and Strava deauthorization.
 - Before broader use, add failed-event monitoring and completed-queue cleanup; history lives separately from the queue.
 
