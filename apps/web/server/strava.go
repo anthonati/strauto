@@ -61,8 +61,15 @@ func stravaActivity(ctx context.Context, accessToken string, id int64) (activity
 	return a, nil
 }
 
-func muteActivity(ctx context.Context, accessToken string, id int64) error {
-	return stravaAPI(ctx, http.MethodPut, accessToken, id, []byte(`{"hide_from_home":true}`), nil)
+func muteActivity(ctx context.Context, accessToken string, id, ownerID int64) error {
+	var updated activity
+	if err := stravaAPI(ctx, http.MethodPut, accessToken, id, []byte(`{"hide_from_home":true}`), &updated); err != nil {
+		return err
+	}
+	if updated.ID != id || updated.Athlete.ID != ownerID || !updated.HideFromHome {
+		return fmt.Errorf("Strava did not confirm the activity was muted")
+	}
+	return nil
 }
 
 func stravaAPI(ctx context.Context, method, accessToken string, id int64, body []byte, result any) error {

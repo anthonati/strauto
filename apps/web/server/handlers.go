@@ -131,19 +131,32 @@ func Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func Automation(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPost) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	c, ok := configured(w)
 	if !ok {
 		return
 	}
-	if !sameOrigin(r, c) {
+	if r.Method == http.MethodPost && !sameOrigin(r, c) {
 		http.Error(w, "invalid origin", http.StatusForbidden)
 		return
 	}
 	a, ok := authenticatedAthlete(w, r, c)
 	if !ok {
+		return
+	}
+	if r.Method == http.MethodGet {
+		summaries, err := automationDashboard(r.Context(), c, a.ID)
+		if err != nil {
+			safeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"automations": summaries, "automation_configured": c.automationConfigured(),
+		})
 		return
 	}
 	var body struct {
@@ -285,7 +298,7 @@ func ProcessEvents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"processed": processed, "retrying": failed})
 }
 
-func processEvent(r *http.Request, c config, event queuedEvent) error {
+func processEvent(r *http.Request, c config, event queuedEvent) (processErr error) {
 	a, err := getAthlete(r.Context(), c, event.OwnerID)
 	if err != nil {
 		if errors.Is(err, errAthleteNotFound) {
@@ -296,6 +309,13 @@ func processEvent(r *http.Request, c config, event queuedEvent) error {
 	if !a.MuteWeightTraining {
 		return nil
 	}
+	checked, outcome := false, "failed"
+	defer func() {
+		// Do not acknowledge the queue row until its dashboard history is saved.
+		if err := recordAutomationRun(r.Context(), c, a.ID, a.muteSubscription().ID, event.ActivityID, checked, outcome); err != nil {
+			processErr = errors.Join(processErr, err)
+		}
+	}()
 	if a.ExpiresAt <= time.Now().Add(5*time.Minute).Unix() {
 		token, err := tokenRequest(r.Context(), c, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {a.RefreshToken}})
 		if err != nil {
@@ -310,10 +330,19 @@ func processEvent(r *http.Request, c config, event queuedEvent) error {
 	if err != nil {
 		return err
 	}
+	if activity.ID != event.ActivityID || activity.Athlete.ID != event.OwnerID {
+		return errors.New("activity ownership mismatch")
+	}
+	checked = true
 	if !shouldMute(activity, event) {
+		outcome = "skipped"
 		return nil
 	}
-	return muteActivity(r.Context(), a.AccessToken, event.ActivityID)
+	if err := muteActivity(r.Context(), a.AccessToken, event.ActivityID, event.OwnerID); err != nil {
+		return err
+	}
+	outcome = "applied"
+	return nil
 }
 
 func shouldMute(activity activity, event queuedEvent) bool {

@@ -15,14 +15,39 @@ import (
 )
 
 type athlete struct {
-	ID                 int64  `json:"id"`
-	FirstName          string `json:"first_name"`
-	LastName           string `json:"last_name"`
-	AccessToken        string `json:"access_token"`
-	RefreshToken       string `json:"refresh_token"`
-	ExpiresAt          int64  `json:"expires_at"`
-	GrantedScopes      string `json:"granted_scopes"`
-	MuteWeightTraining bool   `json:"mute_weight_training"`
+	ID                 int64                    `json:"id"`
+	FirstName          string                   `json:"first_name"`
+	LastName           string                   `json:"last_name"`
+	AccessToken        string                   `json:"access_token"`
+	RefreshToken       string                   `json:"refresh_token"`
+	ExpiresAt          int64                    `json:"expires_at"`
+	GrantedScopes      string                   `json:"granted_scopes"`
+	MuteWeightTraining bool                     `json:"mute_weight_training"`
+	Subscriptions      []automationSubscription `json:"automation_subscriptions"`
+}
+
+type automationSubscription struct {
+	ID       int64  `json:"id"`
+	RuleType string `json:"rule_type"`
+	Enabled  bool   `json:"enabled"`
+}
+
+type automationSummary struct {
+	automationSubscription
+	ActivitiesChecked int64   `json:"activities_checked"`
+	ActivitiesUpdated int64   `json:"activities_updated"`
+	FailedActivities  int64   `json:"failed_activities"`
+	LastRunAt         *string `json:"last_run_at"`
+	LastOutcome       *string `json:"last_outcome"`
+}
+
+func (a athlete) muteSubscription() automationSubscription {
+	for _, subscription := range a.Subscriptions {
+		if subscription.RuleType == "mute_weight_training" {
+			return subscription
+		}
+	}
+	return automationSubscription{}
 }
 
 type queuedEvent struct {
@@ -74,7 +99,7 @@ func dbRequest(ctx context.Context, c config, method, path string, body any, hea
 
 func getAthlete(ctx context.Context, c config, id int64) (athlete, error) {
 	var rows []athlete
-	path := "athletes?id=eq." + strconv.FormatInt(id, 10) + "&limit=1"
+	path := "athletes?id=eq." + strconv.FormatInt(id, 10) + "&select=*,automation_subscriptions(*)&limit=1"
 	_, err := dbRequest(ctx, c, http.MethodGet, path, nil, nil, &rows)
 	if err != nil {
 		return athlete{}, err
@@ -82,7 +107,23 @@ func getAthlete(ctx context.Context, c config, id int64) (athlete, error) {
 	if len(rows) == 0 {
 		return athlete{}, errAthleteNotFound
 	}
-	return rows[0], nil
+	a := rows[0]
+	a.MuteWeightTraining = a.muteSubscription().Enabled
+	return a, nil
+}
+
+func automationDashboard(ctx context.Context, c config, ownerID int64) ([]automationSummary, error) {
+	rows := []automationSummary{}
+	_, err := dbRequest(ctx, c, http.MethodPost, "rpc/automation_dashboard", map[string]any{"p_owner_id": ownerID}, nil, &rows)
+	return rows, err
+}
+
+func recordAutomationRun(ctx context.Context, c config, ownerID, subscriptionID, activityID int64, checked bool, outcome string) error {
+	_, err := dbRequest(ctx, c, http.MethodPost, "rpc/record_automation_run", map[string]any{
+		"p_owner_id": ownerID, "p_subscription_id": subscriptionID,
+		"p_activity_id": activityID, "p_checked": checked, "p_outcome": outcome,
+	}, nil, nil)
+	return err
 }
 
 func saveAthlete(ctx context.Context, c config, token stravaToken, scopes string) error {

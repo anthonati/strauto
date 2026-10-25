@@ -1,6 +1,7 @@
 package strauto
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -162,7 +163,13 @@ func TestProcessEventMutesMatchingStravaActivity(t *testing.T) {
 		status := http.StatusOK
 		switch {
 		case req.URL.Host == "example.supabase.co" && req.Method == http.MethodGet:
-			body = `[{"id":1,"access_token":"access","refresh_token":"refresh","expires_at":9999999999,"mute_weight_training":true}]`
+			body = `[{"id":1,"access_token":"access","refresh_token":"refresh","expires_at":9999999999,"automation_subscriptions":[{"id":11,"rule_type":"mute_weight_training","enabled":true}]}]`
+		case req.URL.Path == "/rest/v1/rpc/record_automation_run":
+			var run map[string]any
+			if err := json.NewDecoder(req.Body).Decode(&run); err != nil || run["p_outcome"] != "applied" || run["p_checked"] != true || run["p_subscription_id"] != float64(11) {
+				t.Errorf("incorrect run history: %v (%v)", run, err)
+			}
+			body = `null`
 		case req.URL.Host == "www.strava.com" && req.Method == http.MethodGet:
 			body = `{"id":2,"sport_type":"WeightTraining","hide_from_home":false,"athlete":{"id":1}}`
 		case req.URL.Host == "www.strava.com" && req.Method == http.MethodPut:
@@ -171,7 +178,7 @@ func TestProcessEventMutesMatchingStravaActivity(t *testing.T) {
 				t.Errorf("incorrect Strava update: %s", payload)
 			}
 			muted = true
-			body = `{}`
+			body = `{"id":2,"hide_from_home":true,"athlete":{"id":1}}`
 		default:
 			t.Errorf("unexpected request: %s %s", req.Method, req.URL)
 			status = http.StatusNotFound

@@ -4,6 +4,26 @@ export interface ConnectedAthlete {
   mute_weight_training: boolean
 }
 
+export interface AutomationSummary {
+  id: number
+  rule_type: 'mute_weight_training'
+  enabled: boolean
+  activities_checked: number
+  activities_updated: number
+  failed_activities: number
+  last_run_at: string | null
+  last_outcome: 'applied' | 'skipped' | 'failed' | null
+}
+
+export interface AutomationDashboard {
+  automations: AutomationSummary[]
+  automation_configured: boolean
+}
+
+export function getAutomations() {
+  return request<AutomationDashboard>('automation')
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     credentials: 'same-origin',
