@@ -1,26 +1,30 @@
-# Architecture and domain layout
+# Architecture
 
-The portfolio repository currently contains only a README. Keep the portfolio site and Strauto as separate deployments so work on either site can ship independently. The Strauto subdomain is already connected to Vercel.
-
-| Public address | Project | Purpose |
-| --- | --- | --- |
-| `https://fortunati.dev` | Future portfolio project | Personal site and a link to Strauto |
-| `https://strauto.fortunati.dev` | Existing Strauto Vercel project, root `apps/web` | React app and Go functions under `/api` |
+Strauto combines a React/Vite frontend with Go API functions on Vercel. Supabase Postgres stores connected athletes, automation subscriptions, queued webhook events, and durable activity-run history. A scheduled worker applies opted-in rules through the Strava API.
 
 ```mermaid
 flowchart LR
-  Browser[Browser] -->|HTTPS| App[strauto.fortunati.dev<br/>Vercel UI and Go API]
-  App -->|OAuth and activity API| Strava[Strava]
+  Browser -->|HTTPS| App[Vercel frontend and Go API]
+  App -->|OAuth and activity API| Strava
   Strava -->|activity webhooks| App
-  App -->|tokens, rule, event queue| DB[Supabase Postgres]
-  Cron[Supabase Cron] -->|POST /api/process_events| App
-  Portfolio[fortunati.dev<br/>future portfolio site] -->|link| App
+  App -->|athletes, subscriptions, events, runs| DB[Supabase Postgres]
+  Cron[Supabase Cron] -->|authenticated worker request| App
 ```
 
-`APP_URL` is the canonical Strauto origin, `https://strauto.fortunati.dev`, without a path. The OAuth callback is `https://strauto.fortunati.dev/api/oauth_callback`. The Strava API application's authorization callback domain should be `strauto.fortunati.dev`; Strava separately allows `localhost` for local development. The webhook callback and worker endpoint live under the same Strauto origin. No portfolio code or reverse proxy is needed for them.
+## Deployment boundaries
 
-The current `strauto.fortunati.dev` CNAME points to Vercel, and the site responds over HTTPS. Following the October 25, 2026 rollout, `/api/health` returns `200` with `status: configured` and `automation_configured: true`. This endpoint validates configuration; separate live checks verified the worker's Supabase access and Strava's callback verification. Keep the portfolio and Strauto as separate hosting projects with their own Git repositories and environment variables.
+Deploy `apps/web` as the Vercel project root. `APP_URL` is the canonical origin, such as `https://strauto.example.com`, without a path. OAuth returns to `/api/oauth_callback`. The Strava app's authorization callback domain must match the hostname. A separate website can link to Strauto without sharing its deployment or credentials.
 
-The October 25 dashboard rollout is deployed: `002_automation_history.sql` is applied, the once-per-minute scheduled worker returns HTTP 200, and the Strava webhook subscription is registered. Connecting an athlete and verifying the first real upload remain outstanding. See the [rollout status](rollout-status.md) for verified results and remaining steps, and the [server setup sequence](server-setup.md) for configuration instructions.
+`/api/health` validates required configuration and reports whether automation settings are present. It does not prove external connectivity or event delivery. Verify the OAuth connection, webhook registration, scheduled worker, and a real activity separately using the [server setup guide](server-setup.md).
 
-The webhook callback uses an unguessable secret path segment, rewritten internally to the handler's `key` parameter, and verifies Strava's subscription ID on event POSTs. Strava's general webhook documentation does not specify a POST signature, although its separate example mentions one without explaining how to obtain a signing secret. Verify the callback URL and delivered headers during the first live subscription setup. Keep the callback URL secret; rotate the key if it leaks.
+## Event processing and history
+
+The callback URL has the form `/hooks/strava/<secret>`. A Vercel rewrite passes its secret path segment to the Go webhook handler. Verification GETs validate Strava's verification token and return its challenge. Event POSTs require the callback secret and matching subscription ID; only eligible activity-create events are queued.
+
+The worker authenticates using a server-only secret, claims queued events, refreshes athlete tokens when needed, and checks activity ownership and type before applying a rule. Retries and duplicate webhooks do not inflate the dashboard's unique-activity counts. Run history is stored separately from the queue so queue cleanup can preserve counts.
+
+## Data access
+
+Server code uses the Supabase secret key. Client roles cannot directly access athlete tokens, queues, subscriptions, or run history. Dashboard reads are scoped to the signed-in athlete. Disabling an automation preserves its history; disconnecting or deauthorizing removes the athlete's data.
+
+Keep local credentials, complete callback URLs, deployment identifiers, operational notes, and planning outside this public repository. Production credentials belong in the service secret stores; example configuration contains only placeholders.

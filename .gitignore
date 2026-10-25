@@ -23,10 +23,18 @@ dist-ssr
 *.sln
 *.sw?
 
-.env
-.env.local
-.env.production
+.env*
+!.env.example
 
 # Local hosting and database CLI state
 .vercel/
 supabase/.temp/
+
+# Work notes and planning belong outside this public checkout.
+/BACKLOG.md
+/PLAN.md
+/WORKLOG.md
+/NOTES.md
+/docs/rollout-status.md
+/private/
+/secrets/
