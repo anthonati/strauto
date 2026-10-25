@@ -112,17 +112,54 @@ func TestSessionRejectsTampering(t *testing.T) {
 	}
 }
 
-func TestWebhookVerificationRequiresSecret(t *testing.T) {
+func TestWebhookVerificationUsesStravaToken(t *testing.T) {
 	testConfig(t)
-	bad := httptest.NewRecorder()
-	Webhook(bad, httptest.NewRequest(http.MethodGet, "/api/webhook?hub.mode=subscribe&hub.challenge=abc&hub.verify_token=verify-token", nil))
-	if bad.Code != http.StatusForbidden {
-		t.Fatalf("webhook without secret: %d", bad.Code)
+	for _, tt := range []struct {
+		name  string
+		query string
+		want  int
+	}{
+		{"strava handshake without callback key", "hub.mode=subscribe&hub.challenge=abc&hub.verify_token=verify-token", http.StatusOK},
+		{"handshake with callback key", "key=callback-secret&hub.mode=subscribe&hub.challenge=abc&hub.verify_token=verify-token", http.StatusOK},
+		{"missing token", "key=callback-secret&hub.mode=subscribe&hub.challenge=abc", http.StatusForbidden},
+		{"wrong token", "key=callback-secret&hub.mode=subscribe&hub.challenge=abc&hub.verify_token=wrong", http.StatusForbidden},
+		{"missing challenge", "hub.mode=subscribe&hub.verify_token=verify-token", http.StatusForbidden},
+		{"wrong mode", "hub.mode=unsubscribe&hub.challenge=abc&hub.verify_token=verify-token", http.StatusForbidden},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			Webhook(response, httptest.NewRequest(http.MethodGet, "/api/webhook?"+tt.query, nil))
+			if response.Code != tt.want {
+				t.Fatalf("verification status: %d %s", response.Code, response.Body.String())
+			}
+			if tt.want == http.StatusOK && strings.TrimSpace(response.Body.String()) != `{"hub.challenge":"abc"}` {
+				t.Fatalf("unexpected challenge response: %s", response.Body.String())
+			}
+		})
 	}
-	good := httptest.NewRecorder()
-	Webhook(good, httptest.NewRequest(http.MethodGet, "/api/webhook?key=callback-secret&hub.mode=subscribe&hub.challenge=abc&hub.verify_token=verify-token", nil))
-	if good.Code != http.StatusOK || !strings.Contains(good.Body.String(), `"hub.challenge":"abc"`) {
-		t.Fatalf("webhook verification: %d %s", good.Code, good.Body.String())
+}
+
+func TestWebhookEventsRequireCallbackKeyAndSubscription(t *testing.T) {
+	testConfig(t)
+	for _, tt := range []struct {
+		name  string
+		query string
+		body  string
+		want  int
+	}{
+		{"missing key", "", `{"owner_id":1,"subscription_id":9}`, http.StatusForbidden},
+		{"verification token cannot authorize events", "hub.verify_token=verify-token", `{"owner_id":1,"subscription_id":9}`, http.StatusForbidden},
+		{"wrong key", "key=wrong", `{"owner_id":1,"subscription_id":9}`, http.StatusForbidden},
+		{"wrong subscription", "key=callback-secret", `{"owner_id":1,"subscription_id":10}`, http.StatusForbidden},
+		{"authenticated ignored event", "key=callback-secret", `{"owner_id":1,"subscription_id":9,"object_type":"activity","aspect_type":"update"}`, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			Webhook(response, httptest.NewRequest(http.MethodPost, "/api/webhook?"+tt.query, strings.NewReader(tt.body)))
+			if response.Code != tt.want {
+				t.Fatalf("event status: %d %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

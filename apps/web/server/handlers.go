@@ -224,11 +224,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "webhook is not configured", http.StatusServiceUnavailable)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(c.webhookSecret)) != 1 {
-		http.Error(w, "invalid webhook key", http.StatusForbidden)
-		return
-	}
 	if r.Method == http.MethodGet {
+		// Strava supplies its own query parameters during subscription validation.
+		// Authenticate that handshake with its verification token; the callback
+		// key below authenticates event deliveries.
 		q := r.URL.Query()
 		if q.Get("hub.mode") != "subscribe" || subtle.ConstantTimeCompare([]byte(q.Get("hub.verify_token")), []byte(c.webhookToken)) != 1 || q.Get("hub.challenge") == "" {
 			http.Error(w, "invalid verification", http.StatusForbidden)
@@ -238,6 +237,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(c.webhookSecret)) != 1 {
+		http.Error(w, "invalid webhook key", http.StatusForbidden)
 		return
 	}
 	var event webhookEvent

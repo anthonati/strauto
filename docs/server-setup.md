@@ -40,6 +40,8 @@ Register one Strava webhook subscription for the API app. Send an HTTP `POST` to
 
 Use the actual values, not the variable names, in the request. Strava immediately sends a verification GET to the callback and returns a numeric `id` if it succeeds. Keep the complete callback URL and request private. Each Strava app supports one subscription; if one already exists, inspect it before attempting to create another. Save the returned ID as `STRAVA_WEBHOOK_SUBSCRIPTION_ID` in Vercel, then deploy again. The same webhook subscription handles all athletes authorized to this API app. At this point `/api/health` should report `"automation_configured":true`; this confirms the variables are present, not that events are being delivered.
 
+The verification GET authenticates with `hub.verify_token` and echoes `hub.challenge`. It does not require the callback's `key` parameter, because Strava supplies its own verification query. Event POSTs still require the callback key and the matching subscription ID.
+
 Set a Supabase Cron HTTP job to `POST https://strauto.fortunati.dev/api/process_events` every minute with `Authorization: Bearer YOUR_WORKER_SECRET`. Store the token in Supabase Vault or its secret management. Upload a test Weight Training activity and verify Strava reports `hide_from_home: true`; confirm it no longer appears in followers' feeds. This action does not make the activity private on your profile. Check the `activity_events` table for failed rows if processing does not complete.
 
 ## 4. Roll out the automation dashboard
