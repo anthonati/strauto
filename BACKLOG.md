@@ -1,9 +1,9 @@
 # Backlog
 
-## Next: deploy and prove the MVP end to end
+## Next: prove the MVP with a real Strava activity
 
 - Database migration and dashboard deployment completed on October 25, 2026; see [rollout status](docs/rollout-status.md).
-- Finish Strava webhook registration, save its subscription ID, and redeploy. The webhook callback secrets and worker secret are configured; production still reports `automation_configured: false` until the subscription ID is set.
+- Strava webhook registration and production configuration are complete. The live health endpoint reports `automation_configured: true`; a real activity upload still needs verification.
 - The once-per-minute Supabase worker job is configured with its token in Vault. Live worker and webhook challenge checks pass.
 - Connect one athlete, enable the mute rule, upload Weight Training, and verify both the Strava result and dashboard counts. Also check a nonmatching upload, duplicate delivery, disable/re-enable, disconnect, and Strava deauthorization.
 - Before broader use, add failed-event monitoring and completed-queue cleanup; history lives separately from the queue.
